@@ -2,6 +2,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { FileText, Users, BookOpen, PlusCircle } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const stats = [
   { label: "Questions Added", value: "0", icon: FileText, color: "text-primary" },
@@ -39,24 +40,16 @@ const TeacherDashboard = () => {
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="mt-8">
         <Card>
-          <CardHeader>
-            <CardTitle style={{ fontFamily: 'var(--font-heading)' }}>Quick Actions</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle style={{ fontFamily: 'var(--font-heading)' }}>Quick Actions</CardTitle></CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            <button className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
+            <Link to="/questions" className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
               <PlusCircle className="h-5 w-5 text-primary" />
-              <div>
-                <p className="font-medium text-sm">Add Question</p>
-                <p className="text-xs text-muted-foreground">Create new questions</p>
-              </div>
-            </button>
-            <button className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
+              <div><p className="font-medium text-sm">Manage Questions</p><p className="text-xs text-muted-foreground">Create & edit</p></div>
+            </Link>
+            <Link to="/tests" className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
               <FileText className="h-5 w-5 text-emerald-500" />
-              <div>
-                <p className="font-medium text-sm">Create Test</p>
-                <p className="text-xs text-muted-foreground">Build a test series</p>
-              </div>
-            </button>
+              <div><p className="font-medium text-sm">Manage Tests</p><p className="text-xs text-muted-foreground">Create test series</p></div>
+            </Link>
           </CardContent>
         </Card>
       </motion.div>
