@@ -1,21 +1,67 @@
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { BookOpen, Target, Clock, TrendingUp, Bookmark, BarChart3 } from "lucide-react";
 import { Link } from "react-router-dom";
-
-const stats = [
-  { label: "Questions Practiced", value: "0", icon: BookOpen, color: "text-primary" },
-  { label: "Accuracy", value: "—", icon: Target, color: "text-emerald-500" },
-  { label: "Avg. Time / Q", value: "—", icon: Clock, color: "text-amber-500" },
-  { label: "Tests Taken", value: "0", icon: TrendingUp, color: "text-violet-500" },
-];
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const item = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } };
 
 const StudentDashboard = () => {
   const { user } = useAuth();
+  const [stats, setStats] = useState({ 
+    totalAnswers: "0", 
+    accuracy: "—", 
+    avgTime: "—", 
+    totalAttempts: "0" 
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user) return;
+      const { data: attempts } = await supabase.from("attempts").select("id").eq("user_id", user.id);
+      const attemptIds = attempts?.map((a) => a.id) ?? [];
+
+      let totalAnswers = 0;
+      let correctAnswers = 0;
+      let totalTime = 0;
+
+      if (attemptIds.length > 0) {
+        const { data: answers } = await supabase
+          .from("answers")
+          .select("is_correct, time_taken")
+          .in("attempt_id", attemptIds);
+        if (answers) {
+          totalAnswers = answers.length;
+          correctAnswers = answers.filter((a) => a.is_correct).length;
+          totalTime = answers.reduce((sum, a) => sum + (a.time_taken ?? 0), 0);
+        }
+      }
+
+      const accuracy = totalAnswers > 0 ? Math.round((correctAnswers / totalAnswers) * 100) : 0;
+      const avgTime = totalAnswers > 0 ? Math.round(totalTime / totalAnswers) : 0;
+
+      setStats({
+        totalAnswers: String(totalAnswers),
+        accuracy: totalAnswers > 0 ? `${accuracy}%` : "—",
+        avgTime: totalAnswers > 0 ? `${avgTime}s` : "—",
+        totalAttempts: String(attempts?.length ?? 0),
+      });
+      setLoading(false);
+    };
+
+    fetchStats();
+  }, [user]);
+
+  const displayStats = [
+    { label: "Questions Practiced", value: stats.totalAnswers, icon: BookOpen, color: "text-primary" },
+    { label: "Accuracy", value: stats.accuracy, icon: Target, color: "text-emerald-500" },
+    { label: "Avg. Time / Q", value: stats.avgTime, icon: Clock, color: "text-amber-500" },
+    { label: "Tests Taken", value: stats.totalAttempts, icon: TrendingUp, color: "text-violet-500" },
+  ];
 
   return (
     <div>
@@ -26,21 +72,29 @@ const StudentDashboard = () => {
         <p className="mt-1 text-muted-foreground">{user?.email}</p>
       </motion.div>
 
-      <motion.div variants={container} initial="hidden" animate="show" className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((s) => (
-          <motion.div key={s.label} variants={item}>
-            <Card className="card-hover">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
-                <s.icon className={`h-5 w-5 ${s.color}`} />
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)' }}>{s.value}</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </motion.div>
+      {loading ? (
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i} className="h-28 animate-pulse bg-muted/40 border-none" />
+          ))}
+        </div>
+      ) : (
+        <motion.div variants={container} initial="hidden" animate="show" className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {displayStats.map((s) => (
+            <motion.div key={s.label} variants={item}>
+              <Card className="card-hover">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
+                  <s.icon className={`h-5 w-5 ${s.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)' }}>{s.value}</p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="mt-8">
         <Card>

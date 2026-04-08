@@ -33,8 +33,8 @@ const Signup = () => {
       await signUp(email, password, fullName, role);
       toast({ title: "Account created!", description: "Welcome to GATE Prep Pro" });
       navigate("/dashboard");
-    } catch (error: any) {
-      toast({ title: "Signup failed", description: error.message, variant: "destructive" });
+    } catch (error: unknown) {
+      toast({ title: "Signup failed", description: error instanceof Error ? error.message : "Unknown error occurred", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
