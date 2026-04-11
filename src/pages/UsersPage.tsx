@@ -28,13 +28,14 @@ const UsersPage = () => {
   useEffect(() => {
     const fetch = async () => {
       const { data: profiles } = await supabase.from("profiles").select("user_id, full_name, branch");
-      if (profiles) {
+if (profiles) {
         const withRoles = await Promise.all(
           profiles.map(async (p) => {
-            const { data: roleData } = await supabase
-              .from("user_roles")
-              .select("role")
-              .eq("user_id", p.user_id)
+            if (p) {
+              const { data: roleData } = await supabase
+                .from("user_roles")
+                .select("role")
+                .eq("user_id", p.user_id)
               .maybeSingle();
             return { ...p, role: roleData?.role ?? "none" };
           })
