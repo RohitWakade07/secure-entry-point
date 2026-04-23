@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { motion } from "framer-motion";
-import { Clock, ChevronLeft, ChevronRight, Flag, CheckCircle2 } from "lucide-react";
+import { Clock, ChevronLeft, ChevronRight, Flag, CheckCircle2, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Option { id: string; option_text: string; is_correct: boolean; }
@@ -18,11 +18,23 @@ interface Question {
   difficulty: string;
   marks: number;
   negative_marks: number;
+  year: number | null;
   options: Option[];
 }
 
+const shuffle = <T,>(arr: T[]): T[] => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
+
 const TestEnginePage = () => {
   const { testId } = useParams<{ testId: string }>();
+  const [searchParams] = useSearchParams();
+  const isGenerated = !testId; // generated mode when no :testId
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -30,7 +42,6 @@ const TestEnginePage = () => {
   const [test, setTest] = useState<{ title: string; duration: number } | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
-  // MSQ fix: answers is now Record<string, string[]> for multi-select support
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [timeLeft, setTimeLeft] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -38,16 +49,85 @@ const TestEnginePage = () => {
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
   const [maxScore, setMaxScore] = useState(0);
-  const [attemptId, setAttemptId] = useState<string | null>(null);
   const startTimeRef = useRef<Record<string, number>>({});
   const timeSpentRef = useRef<Record<string, number>>({});
-  // Ref to always hold the latest handleSubmit — avoids stale closure in timer
   const handleSubmitRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!testId) return;
+      if (isGenerated) {
+        // ===== Generated mode =====
+        const subjectId = searchParams.get("subject");
+        const count = Math.max(1, parseInt(searchParams.get("count") || "10"));
+        const dur = Math.max(5, parseInt(searchParams.get("duration") || "30"));
+        const yearsParam = searchParams.get("years");
+        const years = yearsParam ? yearsParam.split(",").map((y) => parseInt(y)).filter(Boolean) : [];
 
+        if (!subjectId) {
+          setLoading(false);
+          return;
+        }
+
+        // Subject name for title
+        const { data: subj } = await supabase.from("subjects").select("subject_name").eq("id", subjectId).maybeSingle();
+        const yearLabel = years.length > 0 ? `(${years.join(", ")})` : "(All Years)";
+        setTest({
+          title: `${subj?.subject_name ?? "Custom"} Mock ${yearLabel}`,
+          duration: dur,
+        });
+        setTimeLeft(dur * 60);
+
+        // Get topics for this subject
+        const { data: topics } = await supabase.from("topics").select("id").eq("subject_id", subjectId);
+        const topicIds = (topics ?? []).map((t) => t.id);
+        if (topicIds.length === 0) {
+          setLoading(false);
+          return;
+        }
+
+        // Fetch questions matching subject (via topics) + optional years
+        let qQuery = supabase
+          .from("questions")
+          .select("id, question_text, question_type, difficulty, marks, negative_marks, year")
+          .in("topic_id", topicIds);
+        if (years.length > 0) {
+          qQuery = qQuery.in("year", years);
+        }
+        const { data: pool } = await qQuery;
+
+        if (!pool || pool.length === 0) {
+          setLoading(false);
+          return;
+        }
+
+        const picked = shuffle(pool).slice(0, count);
+        const qIds = picked.map((q) => q.id);
+
+        const { data: allOpts } = await supabase
+          .from("options")
+          .select("id, option_text, is_correct, question_id")
+          .in("question_id", qIds);
+
+        const optsByQuestion = new Map<string, Option[]>();
+        (allOpts ?? []).forEach((opt) => {
+          const list = optsByQuestion.get(opt.question_id) ?? [];
+          list.push({ id: opt.id, option_text: opt.option_text, is_correct: opt.is_correct });
+          optsByQuestion.set(opt.question_id, list);
+        });
+
+        const withOpts: Question[] = picked.map((q: any) => ({
+          ...q,
+          marks: Number(q.marks) || 1,
+          negative_marks: Number(q.negative_marks) || 0.33,
+          options: shuffle(optsByQuestion.get(q.id) ?? []),
+        }));
+        setQuestions(withOpts);
+        setLoading(false);
+        return;
+      }
+
+      // ===== Pre-built test mode =====
+      if (!testId) return;
       const { data: t } = await supabase.from("tests").select("title, duration").eq("id", testId).maybeSingle();
       if (t) {
         setTest(t);
@@ -59,10 +139,9 @@ const TestEnginePage = () => {
         const qIds = tqs.map((tq) => tq.question_id);
         const { data: qs } = await supabase
           .from("questions")
-          .select("id, question_text, question_type, difficulty, marks, negative_marks")
+          .select("id, question_text, question_type, difficulty, marks, negative_marks, year")
           .in("id", qIds);
         if (qs) {
-          // Batch-fetch all options for these questions
           const { data: allOpts } = await supabase
             .from("options")
             .select("id, option_text, is_correct, question_id")
@@ -75,7 +154,7 @@ const TestEnginePage = () => {
             optsByQuestion.set(opt.question_id, list);
           });
 
-          const withOpts = qs.map((q) => ({
+          const withOpts = qs.map((q: any) => ({
             ...q,
             marks: Number(q.marks) || 3,
             negative_marks: Number(q.negative_marks) || 1,
@@ -87,98 +166,85 @@ const TestEnginePage = () => {
       setLoading(false);
     };
     fetchData();
-  }, [testId]);
+  }, [testId, isGenerated, searchParams]);
 
   const handleSubmit = useCallback(async () => {
-    if (submitted || !user || !testId) return;
+    if (submitted || !user) return;
     setSubmitted(true);
 
-    // GATE-style marks-based scoring
     let totalMarks = 0;
     let maxMarks = 0;
     questions.forEach((q) => {
       maxMarks += q.marks;
       const selectedIds = answers[q.id] ?? [];
-      if (selectedIds.length === 0) return; // unanswered → 0
+      if (selectedIds.length === 0) return;
 
       if (q.question_type === "MSQ") {
-        // MSQ: all correct options must be selected and no incorrect ones
         const correctIds = new Set(q.options.filter((o) => o.is_correct).map((o) => o.id));
         const selectedSet = new Set(selectedIds);
         const isFullyCorrect =
           correctIds.size === selectedSet.size &&
           [...correctIds].every((id) => selectedSet.has(id));
-        if (isFullyCorrect) {
-          totalMarks += q.marks;
-        } else {
-          totalMarks -= q.negative_marks;
-        }
+        if (isFullyCorrect) totalMarks += q.marks;
+        else totalMarks -= q.negative_marks;
       } else {
-        // MCQ / NAT: single answer
         const selectedId = selectedIds[0];
         const opt = q.options.find((o) => o.id === selectedId);
-        if (opt?.is_correct) {
-          totalMarks += q.marks;
-        } else {
-          totalMarks -= q.negative_marks;
-        }
+        if (opt?.is_correct) totalMarks += q.marks;
+        else totalMarks -= q.negative_marks;
       }
     });
 
-    // Score cannot be negative
     totalMarks = Math.max(0, totalMarks);
     setScore(totalMarks);
     setMaxScore(maxMarks);
 
     const pct = maxMarks > 0 ? Math.round((totalMarks / maxMarks) * 100) : 0;
 
-    // Save attempt with 'completed' status
-    const { data: attempt } = await supabase
-      .from("attempts")
-      .insert({
-        user_id: user.id,
-        test_id: testId,
-        score: pct,
-        status: "completed",
-        end_time: new Date().toISOString(),
-      })
-      .select()
-      .single();
+    // Only persist attempts for pre-built tests (we have a test_id).
+    // Generated tests are ad-hoc — show results without DB write.
+    if (testId) {
+      const { data: attempt } = await supabase
+        .from("attempts")
+        .insert({
+          user_id: user.id,
+          test_id: testId,
+          score: pct,
+          status: "completed",
+          end_time: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-    if (attempt) {
-      setAttemptId(attempt.id);
-
-      // Save individual answers
-      const answerInserts = questions.map((q) => {
-        const selectedIds = answers[q.id] ?? [];
-        const selectedId = selectedIds[0] || null;
-        const isCorrect = selectedId
-          ? q.options.find((o) => o.id === selectedId)?.is_correct ?? false
-          : false;
-        return {
-          attempt_id: attempt.id,
-          question_id: q.id,
-          selected_option_id: selectedId,
-          is_correct: isCorrect,
-          time_taken: timeSpentRef.current[q.id] || 0,
-        };
-      });
-      await supabase.from("answers").insert(answerInserts);
+      if (attempt) {
+        const answerInserts = questions.map((q) => {
+          const selectedIds = answers[q.id] ?? [];
+          const selectedId = selectedIds[0] || null;
+          const isCorrect = selectedId
+            ? q.options.find((o) => o.id === selectedId)?.is_correct ?? false
+            : false;
+          return {
+            attempt_id: attempt.id,
+            question_id: q.id,
+            selected_option_id: selectedId,
+            is_correct: isCorrect,
+            time_taken: timeSpentRef.current[q.id] || 0,
+          };
+        });
+        await supabase.from("answers").insert(answerInserts);
+      }
     }
 
     setShowResult(true);
     toast({ title: "Test submitted!" });
   }, [submitted, user, testId, questions, answers, toast]);
 
-  // Keep ref in sync with latest handleSubmit
   useEffect(() => {
     handleSubmitRef.current = handleSubmit;
   }, [handleSubmit]);
 
-  // Timer — uses handleSubmitRef to avoid stale closure
   useEffect(() => {
     if (submitted || loading || questions.length === 0) return;
-    // Guard: don't start timer if timeLeft is already 0 (prevents auto-submit on mount)
     if (timeLeft <= 0) return;
 
     const interval = setInterval(() => {
@@ -191,9 +257,8 @@ const TestEnginePage = () => {
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [submitted, loading, questions.length]); // timeLeft intentionally excluded — it's managed inside setTimeLeft
+  }, [submitted, loading, questions.length]);
 
-  // Track time per question
   useEffect(() => {
     if (questions.length === 0) return;
     const qId = questions[currentIdx]?.id;
@@ -211,7 +276,6 @@ const TestEnginePage = () => {
     if (submitted) return;
     setAnswers((prev) => {
       if (questionType === "MSQ") {
-        // Toggle option for multi-select
         const current = prev[questionId] ?? [];
         const exists = current.includes(optionId);
         return {
@@ -221,7 +285,6 @@ const TestEnginePage = () => {
             : [...current, optionId],
         };
       } else {
-        // Single-select for MCQ / NAT
         return { ...prev, [questionId]: [optionId] };
       }
     });
@@ -234,13 +297,10 @@ const TestEnginePage = () => {
     return `${h > 0 ? `${h}:` : ""}${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
-  const isOptionSelected = (questionId: string, optionId: string) => {
-    return (answers[questionId] ?? []).includes(optionId);
-  };
+  const isOptionSelected = (questionId: string, optionId: string) =>
+    (answers[questionId] ?? []).includes(optionId);
 
-  const hasAnswer = (questionId: string) => {
-    return (answers[questionId] ?? []).length > 0;
-  };
+  const hasAnswer = (questionId: string) => (answers[questionId] ?? []).length > 0;
 
   const currentQ = questions[currentIdx];
 
@@ -257,8 +317,12 @@ const TestEnginePage = () => {
       <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6">
         <Card className="max-w-md">
           <CardContent className="py-8 text-center">
-            <p className="text-lg font-medium mb-4">No questions in this test yet</p>
-            <p className="text-muted-foreground mb-6">The teacher hasn't added questions to this test.</p>
+            <p className="text-lg font-medium mb-4">No matching questions</p>
+            <p className="text-muted-foreground mb-6">
+              {isGenerated
+                ? "No questions match your subject/year filters. Try different years or remove the year filter."
+                : "This test has no questions yet."}
+            </p>
             <Button onClick={() => navigate("/tests")}>Back to Tests</Button>
           </CardContent>
         </Card>
@@ -268,7 +332,6 @@ const TestEnginePage = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Top bar */}
       <header className="sticky top-0 z-50 flex items-center justify-between border-b border-border bg-card px-4 py-3 lg:px-8">
         <h2 className="text-lg font-bold truncate" style={{ fontFamily: "var(--font-heading)" }}>
           {test?.title}
@@ -285,7 +348,6 @@ const TestEnginePage = () => {
       </header>
 
       <div className="mx-auto max-w-4xl p-6">
-        {/* Question navigation */}
         <div className="mb-6 flex flex-wrap gap-2">
           {questions.map((q, i) => (
             <button
@@ -304,15 +366,20 @@ const TestEnginePage = () => {
           ))}
         </div>
 
-        {/* Current question */}
         {currentQ && (
           <motion.div key={currentQ.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
             <Card>
               <CardContent className="p-6">
-                <div className="mb-4 flex items-center gap-2">
+                <div className="mb-4 flex flex-wrap items-center gap-2">
                   <span className="text-sm text-muted-foreground font-medium">Q{currentIdx + 1}</span>
                   <Badge variant="outline">{currentQ.question_type}</Badge>
                   <Badge variant="outline">{currentQ.difficulty}</Badge>
+                  {currentQ.year && (
+                    <Badge className="gap-1 bg-primary/10 text-primary hover:bg-primary/15 border-primary/20">
+                      <Calendar className="h-3 w-3" />
+                      GATE {currentQ.year}
+                    </Badge>
+                  )}
                   <Badge variant="secondary" className="ml-auto">
                     +{currentQ.marks} / −{currentQ.negative_marks}
                   </Badge>
@@ -382,7 +449,6 @@ const TestEnginePage = () => {
         )}
       </div>
 
-      {/* Result dialog */}
       <Dialog open={showResult} onOpenChange={setShowResult}>
         <DialogContent>
           <DialogHeader>
