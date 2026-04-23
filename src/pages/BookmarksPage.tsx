@@ -29,8 +29,9 @@ const BookmarksPage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetch = async () => {
-      if (!user) return;
+    if (!user) return;
+
+    const fetchBookmarks = async () => {
       const { data } = await supabase
         .from("bookmarks")
         .select("id, question_id")
@@ -38,16 +39,13 @@ const BookmarksPage = () => {
         .order("created_at", { ascending: false });
 
       if (data && data.length > 0) {
-        // Batch-fetch all questions in one query instead of N+1
         const qIds = data.map((bm) => bm.question_id);
         const { data: questions } = await supabase
           .from("questions")
           .select("id, question_text, difficulty, question_type")
           .in("id", qIds);
 
-        const questionMap = new Map(
-          (questions ?? []).map((q) => [q.id, q])
-        );
+        const questionMap = new Map((questions ?? []).map((q) => [q.id, q]));
 
         const withQuestions = data.map((bm) => ({
           ...bm,
@@ -59,7 +57,21 @@ const BookmarksPage = () => {
       }
       setLoading(false);
     };
-    fetch();
+
+    fetchBookmarks();
+
+    const channel = supabase
+      .channel(`bookmarks-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "bookmarks", filter: `user_id=eq.${user.id}` },
+        () => fetchBookmarks()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const removeBookmark = async (bookmarkId: string) => {
