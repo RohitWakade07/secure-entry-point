@@ -164,31 +164,31 @@ export type Database = {
       }
       practice_sessions: {
         Row: {
-          id: string
-          user_id: string
-          topic_id: string
-          questions_answered: number
           correct_answers: number
-          total_time: number
           created_at: string
+          id: string
+          questions_answered: number
+          topic_id: string
+          total_time: number
+          user_id: string
         }
         Insert: {
-          id?: string
-          user_id: string
-          topic_id: string
-          questions_answered?: number
           correct_answers?: number
-          total_time?: number
           created_at?: string
+          id?: string
+          questions_answered?: number
+          topic_id: string
+          total_time?: number
+          user_id: string
         }
         Update: {
-          id?: string
-          user_id?: string
-          topic_id?: string
-          questions_answered?: number
           correct_answers?: number
-          total_time?: number
           created_at?: string
+          id?: string
+          questions_answered?: number
+          topic_id?: string
+          total_time?: number
+          user_id?: string
         }
         Relationships: [
           {
@@ -424,8 +424,8 @@ export type Database = {
       }
       has_role: {
         Args: {
-          _user_id: string
           _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
         }
         Returns: boolean
       }
