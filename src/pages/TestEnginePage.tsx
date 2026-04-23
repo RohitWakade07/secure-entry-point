@@ -204,7 +204,7 @@ const TestEnginePage = () => {
     // Only persist attempts for pre-built tests (we have a test_id).
     // Generated tests are ad-hoc — show results without DB write.
     if (testId) {
-      const { data: attempt } = await supabase
+      const { data: attempt, error } = await supabase
         .from("attempts")
         .insert({
           user_id: user.id,
@@ -215,6 +215,11 @@ const TestEnginePage = () => {
         })
         .select()
         .single();
+
+      if (error) {
+        console.error("Attempt insert error:", error);
+        toast({ title: "Failed to save attempt", description: error.message, variant: "destructive" });
+      }
 
       if (attempt) {
         const answerInserts = questions.map((q) => {
@@ -231,7 +236,10 @@ const TestEnginePage = () => {
             time_taken: timeSpentRef.current[q.id] || 0,
           };
         });
-        await supabase.from("answers").insert(answerInserts);
+        const { error: answersError } = await supabase.from("answers").insert(answerInserts);
+        if (answersError) {
+          console.error("Answers insert error:", answersError);
+        }
       }
     }
 
