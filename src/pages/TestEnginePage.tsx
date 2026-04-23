@@ -203,43 +203,41 @@ const TestEnginePage = () => {
 
     // Only persist attempts for pre-built tests (we have a test_id).
     // Generated tests are ad-hoc — show results without DB write.
-    if (testId) {
-      const { data: attempt, error } = await supabase
-        .from("attempts")
-        .insert({
-          user_id: user.id,
-          test_id: testId,
-          score: pct,
-          status: "completed",
-          end_time: new Date().toISOString(),
-        })
-        .select()
-        .single();
+    const { data: attempt, error } = await supabase
+      .from("attempts")
+      .insert({
+        user_id: user.id,
+        test_id: testId || null,
+        score: pct,
+        status: "completed",
+        end_time: new Date().toISOString(),
+      })
+      .select()
+      .single();
 
-      if (error) {
-        console.error("Attempt insert error:", error);
-        toast({ title: "Failed to save attempt", description: error.message, variant: "destructive" });
-      }
+    if (error) {
+      console.error("Attempt insert error:", error);
+      toast({ title: "Failed to save attempt", description: error.message, variant: "destructive" });
+    }
 
-      if (attempt) {
-        const answerInserts = questions.map((q) => {
-          const selectedIds = answers[q.id] ?? [];
-          const selectedId = selectedIds[0] || null;
-          const isCorrect = selectedId
-            ? q.options.find((o) => o.id === selectedId)?.is_correct ?? false
-            : false;
-          return {
-            attempt_id: attempt.id,
-            question_id: q.id,
-            selected_option_id: selectedId,
-            is_correct: isCorrect,
-            time_taken: timeSpentRef.current[q.id] || 0,
-          };
-        });
-        const { error: answersError } = await supabase.from("answers").insert(answerInserts);
-        if (answersError) {
-          console.error("Answers insert error:", answersError);
-        }
+    if (attempt) {
+      const answerInserts = questions.map((q) => {
+        const selectedIds = answers[q.id] ?? [];
+        const selectedId = selectedIds[0] || null;
+        const isCorrect = selectedId
+          ? q.options.find((o) => o.id === selectedId)?.is_correct ?? false
+          : false;
+        return {
+          attempt_id: attempt.id,
+          question_id: q.id,
+          selected_option_id: selectedId,
+          is_correct: isCorrect,
+          time_taken: timeSpentRef.current[q.id] || 0,
+        };
+      });
+      const { error: answersError } = await supabase.from("answers").insert(answerInserts);
+      if (answersError) {
+        console.error("Answers insert error:", answersError);
       }
     }
 

@@ -15,7 +15,11 @@ const PerformancePage = () => {
     if (!user) return;
 
     const fetchStats = async () => {
-      const { data: attempts } = await supabase.from("attempts").select("*").eq("user_id", user.id);
+      const [{ data: attempts }, { data: practiceSessions }] = await Promise.all([
+        supabase.from("attempts").select("*").eq("user_id", user.id),
+        supabase.from("practice_sessions").select("questions_answered, correct_answers, total_time").eq("user_id", user.id)
+      ]);
+      
       const attemptIds = attempts?.map((a) => a.id) ?? [];
 
       let totalAnswers = 0;
@@ -28,10 +32,18 @@ const PerformancePage = () => {
           .select("is_correct, time_taken")
           .in("attempt_id", attemptIds);
         if (answers) {
-          totalAnswers = answers.length;
-          correctAnswers = answers.filter((a) => a.is_correct).length;
-          totalTime = answers.reduce((sum, a) => sum + (a.time_taken ?? 0), 0);
+          totalAnswers += answers.length;
+          correctAnswers += answers.filter((a) => a.is_correct).length;
+          totalTime += answers.reduce((sum, a) => sum + (a.time_taken ?? 0), 0);
         }
+      }
+
+      if (practiceSessions) {
+        practiceSessions.forEach((p) => {
+          totalAnswers += p.questions_answered || 0;
+          correctAnswers += p.correct_answers || 0;
+          totalTime += p.total_time || 0;
+        });
       }
 
       const avgScore = attempts && attempts.length > 0

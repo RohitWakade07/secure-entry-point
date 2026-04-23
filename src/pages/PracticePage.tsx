@@ -32,6 +32,7 @@ const PracticePage = () => {
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
   const [topicName, setTopicName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showResults, setShowResults] = useState(false);
 
   // Practice session tracking
   const sessionIdRef = useRef<string | null>(null);
@@ -155,9 +156,13 @@ const PracticePage = () => {
   };
 
   const handleNext = () => {
-    setSelectedOption(null);
-    setShowAnswer(false);
-    setCurrentIdx((prev) => Math.min(prev + 1, questions.length - 1));
+    if (currentIdx === questions.length - 1) {
+      setShowResults(true);
+    } else {
+      setSelectedOption(null);
+      setShowAnswer(false);
+      setCurrentIdx((prev) => Math.min(prev + 1, questions.length - 1));
+    }
   };
 
   const handlePrev = () => {
@@ -194,6 +199,45 @@ const PracticePage = () => {
               No questions available for this topic yet.
             </CardContent>
           </Card>
+        ) : showResults ? (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+            <Card className="p-8 text-center">
+              <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Target className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Practice Complete!</h2>
+              <p className="text-muted-foreground mb-8">
+                Great job! You've completed all available questions for this topic. Here is your summary:
+              </p>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 text-left">
+                <div className="p-4 bg-muted/50 rounded-xl text-center">
+                  <div className="text-2xl font-bold text-primary">{answeredCountRef.current}</div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Answered</div>
+                </div>
+                <div className="p-4 bg-muted/50 rounded-xl text-center">
+                  <div className="text-2xl font-bold text-emerald-600">{correctCountRef.current}</div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Correct</div>
+                </div>
+                <div className="p-4 bg-muted/50 rounded-xl text-center">
+                  <div className="text-2xl font-bold text-amber-600">
+                    {answeredCountRef.current > 0 
+                      ? Math.round((correctCountRef.current / answeredCountRef.current) * 100) 
+                      : 0}%
+                  </div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Accuracy</div>
+                </div>
+                <div className="p-4 bg-muted/50 rounded-xl text-center">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {Math.round((Date.now() - sessionStartRef.current) / 1000)}s
+                  </div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Total Time</div>
+                </div>
+              </div>
+
+              <Button size="lg" onClick={() => navigate("/dashboard")}>Return to Dashboard</Button>
+            </Card>
+          </motion.div>
         ) : currentQ ? (
           <motion.div key={currentQ.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
             <Card>
@@ -269,8 +313,10 @@ const PracticePage = () => {
                       Check Answer
                     </Button>
                   ) : (
-                    <Button onClick={handleNext} disabled={currentIdx === questions.length - 1}>
-                      Next <ChevronRight className="h-4 w-4 ml-1" />
+                    <Button onClick={handleNext}>
+                      {currentIdx === questions.length - 1 ? "Finish Practice" : (
+                        <>Next <ChevronRight className="h-4 w-4 ml-1" /></>
+                      )}
                     </Button>
                   )}
                 </div>
