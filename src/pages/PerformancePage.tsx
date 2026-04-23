@@ -12,8 +12,9 @@ const PerformancePage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetch = async () => {
-      if (!user) return;
+    if (!user) return;
+
+    const fetchStats = async () => {
       const { data: attempts } = await supabase.from("attempts").select("*").eq("user_id", user.id);
       const attemptIds = attempts?.map((a) => a.id) ?? [];
 
@@ -46,7 +47,31 @@ const PerformancePage = () => {
       });
       setLoading(false);
     };
-    fetch();
+
+    fetchStats();
+
+    const channel = supabase
+      .channel(`performance-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "attempts", filter: `user_id=eq.${user.id}` },
+        () => fetchStats()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "answers" },
+        () => fetchStats()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "practice_sessions", filter: `user_id=eq.${user.id}` },
+        () => fetchStats()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const accuracy = stats.totalAnswers > 0 ? Math.round((stats.correctAnswers / stats.totalAnswers) * 100) : 0;
