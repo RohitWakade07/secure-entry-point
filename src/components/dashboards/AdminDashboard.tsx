@@ -3,21 +3,25 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { Users, BookOpen, FileText, Shield } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const AdminDashboard = () => {
   const [counts, setCounts] = useState({ users: 0, subjects: 0, questions: 0 });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchCounts = async () => {
-      const [{ count: subjectCount }, { count: questionCount }] = await Promise.all([
+      const [{ count: userCount }, { count: subjectCount }, { count: questionCount }] = await Promise.all([
+        supabase.from("user_roles").select("*", { count: "exact", head: true }),
         supabase.from("subjects").select("*", { count: "exact", head: true }),
         supabase.from("questions").select("*", { count: "exact", head: true }),
       ]);
       setCounts({
-        users: 0,
+        users: userCount ?? 0,
         subjects: subjectCount ?? 0,
         questions: questionCount ?? 0,
       });
+      setLoading(false);
     };
     fetchCounts();
   }, []);
@@ -47,7 +51,11 @@ const AdminDashboard = () => {
                 <s.icon className={`h-5 w-5 ${s.color}`} />
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)' }}>{s.value}</p>
+                {loading ? (
+                  <div className="h-8 w-16 animate-pulse rounded bg-muted/40" />
+                ) : (
+                  <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)' }}>{s.value}</p>
+                )}
               </CardContent>
             </Card>
           </motion.div>
@@ -60,27 +68,27 @@ const AdminDashboard = () => {
             <CardTitle style={{ fontFamily: 'var(--font-heading)' }}>Management</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-3">
-            <button className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
+            <Link to="/users" className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
               <Users className="h-5 w-5 text-primary" />
               <div>
                 <p className="font-medium text-sm">Manage Users</p>
                 <p className="text-xs text-muted-foreground">View & edit user roles</p>
               </div>
-            </button>
-            <button className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
+            </Link>
+            <Link to="/admin-subjects" className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
               <BookOpen className="h-5 w-5 text-emerald-500" />
               <div>
                 <p className="font-medium text-sm">Manage Subjects</p>
                 <p className="text-xs text-muted-foreground">Add subjects & topics</p>
               </div>
-            </button>
-            <button className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
+            </Link>
+            <Link to="/questions" className="flex items-center gap-3 rounded-xl border border-border p-4 text-left transition-colors hover:bg-secondary">
               <Shield className="h-5 w-5 text-violet-500" />
               <div>
                 <p className="font-medium text-sm">Content Moderation</p>
                 <p className="text-xs text-muted-foreground">Review & approve</p>
               </div>
-            </button>
+            </Link>
           </CardContent>
         </Card>
       </motion.div>

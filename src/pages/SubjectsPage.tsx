@@ -22,17 +22,25 @@ const SubjectsPage = () => {
 
   useEffect(() => {
     const fetch = async () => {
-      const { data: subs } = await supabase.from("subjects").select("*");
+      // Fetch subjects and topics in parallel (single query each — no N+1)
+      const [{ data: subs }, { data: allTopics }] = await Promise.all([
+        supabase.from("subjects").select("*"),
+        supabase.from("topics").select("id, topic_name, subject_id"),
+      ]);
+
       if (subs) {
-        const withTopics = await Promise.all(
-          subs.map(async (s) => {
-            const { data: topics } = await supabase
-              .from("topics")
-              .select("id, topic_name")
-              .eq("subject_id", s.id);
-            return { ...s, topics: topics ?? [] };
-          })
-        );
+        // Group topics by subject_id in memory
+        const topicsBySubject = new Map<string, { id: string; topic_name: string }[]>();
+        (allTopics ?? []).forEach((t) => {
+          const list = topicsBySubject.get(t.subject_id) ?? [];
+          list.push({ id: t.id, topic_name: t.topic_name });
+          topicsBySubject.set(t.subject_id, list);
+        });
+
+        const withTopics = subs.map((s) => ({
+          ...s,
+          topics: topicsBySubject.get(s.id) ?? [],
+        }));
         setSubjects(withTopics);
       }
       setLoading(false);

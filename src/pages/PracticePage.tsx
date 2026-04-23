@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,8 +33,14 @@ const PracticePage = () => {
   const [topicName, setTopicName] = useState("");
   const [loading, setLoading] = useState(true);
 
+  // Practice session tracking
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionStartRef = useRef<number>(Date.now());
+  const answeredCountRef = useRef(0);
+  const correctCountRef = useRef(0);
+
   useEffect(() => {
-    const fetch = async () => {
+    const fetchData = async () => {
       if (!topicId) return;
       const { data: topic } = await supabase.from("topics").select("topic_name").eq("id", topicId).maybeSingle();
       if (topic) setTopicName(topic.topic_name);
@@ -44,16 +50,25 @@ const PracticePage = () => {
         .select("id, question_text, question_type, difficulty, explanation")
         .eq("topic_id", topicId);
 
-      if (qs) {
-        const withOptions = await Promise.all(
-          qs.map(async (q) => {
-            const { data: opts } = await supabase
-              .from("options")
-              .select("id, option_text, is_correct")
-              .eq("question_id", q.id);
-            return { ...q, options: opts ?? [] };
-          })
-        );
+      if (qs && qs.length > 0) {
+        // Batch-fetch options instead of N+1
+        const qIds = qs.map((q) => q.id);
+        const { data: allOpts } = await supabase
+          .from("options")
+          .select("id, option_text, is_correct, question_id")
+          .in("question_id", qIds);
+
+        const optsByQuestion = new Map<string, { id: string; option_text: string; is_correct: boolean }[]>();
+        (allOpts ?? []).forEach((opt) => {
+          const list = optsByQuestion.get(opt.question_id) ?? [];
+          list.push({ id: opt.id, option_text: opt.option_text, is_correct: opt.is_correct });
+          optsByQuestion.set(opt.question_id, list);
+        });
+
+        const withOptions = qs.map((q) => ({
+          ...q,
+          options: optsByQuestion.get(q.id) ?? [],
+        }));
         setQuestions(withOptions);
       }
 
@@ -63,12 +78,56 @@ const PracticePage = () => {
           .select("question_id")
           .eq("user_id", user.id);
         if (bm) setBookmarkedIds(new Set(bm.map((b) => b.question_id)));
+
+        // Create a practice session
+        if (topicId) {
+          const { data: session } = await supabase
+            .from("practice_sessions")
+            .insert({
+              user_id: user.id,
+              topic_id: topicId,
+              questions_answered: 0,
+              correct_answers: 0,
+              total_time: 0,
+            })
+            .select("id")
+            .single();
+          if (session) {
+            sessionIdRef.current = session.id;
+            sessionStartRef.current = Date.now();
+          }
+        }
       }
 
       setLoading(false);
     };
-    fetch();
+    fetchData();
   }, [topicId, user]);
+
+  // Save practice session on unmount
+  const savePracticeSession = useCallback(async () => {
+    if (!sessionIdRef.current) return;
+    const totalTime = Math.round((Date.now() - sessionStartRef.current) / 1000);
+    await supabase
+      .from("practice_sessions")
+      .update({
+        questions_answered: answeredCountRef.current,
+        correct_answers: correctCountRef.current,
+        total_time: totalTime,
+      })
+      .eq("id", sessionIdRef.current);
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      savePracticeSession();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      savePracticeSession();
+    };
+  }, [savePracticeSession]);
 
   const currentQ = questions[currentIdx];
 
@@ -82,6 +141,16 @@ const PracticePage = () => {
       await supabase.from("bookmarks").insert({ user_id: user.id, question_id: currentQ.id });
       setBookmarkedIds((prev) => new Set(prev).add(currentQ.id));
       toast({ title: "Question bookmarked!" });
+    }
+  };
+
+  const handleCheckAnswer = () => {
+    if (!selectedOption || !currentQ) return;
+    setShowAnswer(true);
+    answeredCountRef.current += 1;
+    const opt = currentQ.options.find((o) => o.id === selectedOption);
+    if (opt?.is_correct) {
+      correctCountRef.current += 1;
     }
   };
 
@@ -196,7 +265,7 @@ const PracticePage = () => {
                     <ChevronLeft className="h-4 w-4 mr-1" /> Previous
                   </Button>
                   {!showAnswer ? (
-                    <Button onClick={() => setShowAnswer(true)} disabled={!selectedOption}>
+                    <Button onClick={handleCheckAnswer} disabled={!selectedOption}>
                       Check Answer
                     </Button>
                   ) : (

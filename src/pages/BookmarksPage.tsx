@@ -37,18 +37,25 @@ const BookmarksPage = () => {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      if (data) {
-        const withQuestions = await Promise.all(
-          data.map(async (bm) => {
-            const { data: q } = await supabase
-              .from("questions")
-              .select("id, question_text, difficulty, question_type")
-              .eq("id", bm.question_id)
-              .maybeSingle();
-            return { ...bm, question: q };
-          })
+      if (data && data.length > 0) {
+        // Batch-fetch all questions in one query instead of N+1
+        const qIds = data.map((bm) => bm.question_id);
+        const { data: questions } = await supabase
+          .from("questions")
+          .select("id, question_text, difficulty, question_type")
+          .in("id", qIds);
+
+        const questionMap = new Map(
+          (questions ?? []).map((q) => [q.id, q])
         );
+
+        const withQuestions = data.map((bm) => ({
+          ...bm,
+          question: questionMap.get(bm.question_id) ?? null,
+        }));
         setBookmarks(withQuestions);
+      } else {
+        setBookmarks([]);
       }
       setLoading(false);
     };

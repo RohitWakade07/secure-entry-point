@@ -27,18 +27,23 @@ const UsersPage = () => {
 
   useEffect(() => {
     const fetch = async () => {
-      const { data: profiles } = await supabase.from("profiles").select("user_id, full_name, branch");
+      // Fetch profiles and roles in parallel (2 queries total instead of N+1)
+      const [{ data: profiles }, { data: allRoles }] = await Promise.all([
+        supabase.from("profiles").select("user_id, full_name, branch"),
+        supabase.from("user_roles").select("user_id, role"),
+      ]);
+
       if (profiles) {
-        const withRoles = await Promise.all(
-          profiles.map(async (p) => {
-            const { data: roleData } = await supabase
-              .from("user_roles")
-              .select("role")
-              .eq("user_id", p.user_id)
-              .maybeSingle();
-            return { ...p, role: roleData?.role ?? "none" };
-          })
-        );
+        // Build a role lookup map
+        const roleMap = new Map<string, string>();
+        (allRoles ?? []).forEach((r) => {
+          roleMap.set(r.user_id, r.role);
+        });
+
+        const withRoles = profiles.map((p) => ({
+          ...p,
+          role: roleMap.get(p.user_id) ?? "none",
+        }));
         setUsers(withRoles);
       }
       setLoading(false);

@@ -16,6 +16,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const normalizeAuthError = (error: unknown) => {
+  if (error instanceof TypeError && error.message.toLowerCase().includes("failed to fetch")) {
+    return new Error(
+      "Cannot reach Supabase auth endpoint. Check VITE_SUPABASE_URL/VITE_SUPABASE_PROJECT_ID and your DNS/network settings."
+    );
+  }
+  return error instanceof Error ? error : new Error("Authentication request failed");
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -48,38 +57,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchRole(session.user.id);
-      } else {
-        setLoading(false);
+        await fetchRole(session.user.id);
       }
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, [fetchRole]);
 
   const signUp = async (email: string, password: string, fullName: string, selectedRole: AppRole) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
-    });
-    if (error) throw error;
-    if (data.user) {
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({ user_id: data.user.id, role: selectedRole });
-      if (roleError) throw roleError;
-      setRole(selectedRole);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName } },
+      });
+      if (error) throw error;
+      if (data.user) {
+        const { error: roleError } = await supabase
+          .from("user_roles")
+          .insert({ user_id: data.user.id, role: selectedRole });
+        if (roleError) throw roleError;
+        setRole(selectedRole);
+      }
+    } catch (error) {
+      throw normalizeAuthError(error);
     }
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    } catch (error) {
+      throw normalizeAuthError(error);
+    }
   };
 
   const signOut = async () => {

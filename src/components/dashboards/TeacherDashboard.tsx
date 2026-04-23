@@ -1,17 +1,61 @@
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { FileText, Users, BookOpen, PlusCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const stats = [
-  { label: "Questions Added", value: "0", icon: FileText, color: "text-primary" },
-  { label: "Tests Created", value: "0", icon: BookOpen, color: "text-emerald-500" },
-  { label: "Students Reached", value: "0", icon: Users, color: "text-amber-500" },
-];
-
 const TeacherDashboard = () => {
   const { user } = useAuth();
+  const [counts, setCounts] = useState({ questions: 0, tests: 0, students: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user) return;
+
+      // Fetch question count and test count + test IDs in parallel
+      const [{ count: questionCount }, { data: testsData }] = await Promise.all([
+        supabase
+          .from("questions")
+          .select("*", { count: "exact", head: true })
+          .eq("teacher_id", user.id),
+        supabase
+          .from("tests")
+          .select("id")
+          .eq("created_by", user.id),
+      ]);
+
+      let studentCount = 0;
+      const testIds = testsData?.map((t) => t.id) ?? [];
+      if (testIds.length > 0) {
+        // Count distinct students who attempted these tests
+        const { data: attempts } = await supabase
+          .from("attempts")
+          .select("user_id")
+          .in("test_id", testIds);
+        if (attempts) {
+          const uniqueStudents = new Set(attempts.map((a) => a.user_id));
+          studentCount = uniqueStudents.size;
+        }
+      }
+
+      setCounts({
+        questions: questionCount ?? 0,
+        tests: testIds.length,
+        students: studentCount,
+      });
+      setLoading(false);
+    };
+    fetchStats();
+  }, [user]);
+
+  const stats = [
+    { label: "Questions Added", value: String(counts.questions), icon: FileText, color: "text-primary" },
+    { label: "Tests Created", value: String(counts.tests), icon: BookOpen, color: "text-emerald-500" },
+    { label: "Students Reached", value: String(counts.students), icon: Users, color: "text-amber-500" },
+  ];
 
   return (
     <div>
@@ -31,7 +75,11 @@ const TeacherDashboard = () => {
                 <s.icon className={`h-5 w-5 ${s.color}`} />
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)' }}>{s.value}</p>
+                {loading ? (
+                  <div className="h-8 w-16 animate-pulse rounded bg-muted/40" />
+                ) : (
+                  <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)' }}>{s.value}</p>
+                )}
               </CardContent>
             </Card>
           </motion.div>

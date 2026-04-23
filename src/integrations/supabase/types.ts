@@ -70,6 +70,7 @@ export type Database = {
           id: string
           score: number | null
           start_time: string
+          status: string
           test_id: string
           user_id: string
         }
@@ -79,6 +80,7 @@ export type Database = {
           id?: string
           score?: number | null
           start_time?: string
+          status?: string
           test_id: string
           user_id: string
         }
@@ -88,6 +90,7 @@ export type Database = {
           id?: string
           score?: number | null
           start_time?: string
+          status?: string
           test_id?: string
           user_id?: string
         }
@@ -159,6 +162,44 @@ export type Database = {
           },
         ]
       }
+      practice_sessions: {
+        Row: {
+          id: string
+          user_id: string
+          topic_id: string
+          questions_answered: number
+          correct_answers: number
+          total_time: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          topic_id: string
+          questions_answered?: number
+          correct_answers?: number
+          total_time?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          topic_id?: string
+          questions_answered?: number
+          correct_answers?: number
+          total_time?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_sessions_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           branch: string | null
@@ -192,6 +233,8 @@ export type Database = {
           difficulty: string
           explanation: string | null
           id: string
+          marks: number
+          negative_marks: number
           question_text: string
           question_type: string
           teacher_id: string
@@ -203,6 +246,8 @@ export type Database = {
           difficulty: string
           explanation?: string | null
           id?: string
+          marks?: number
+          negative_marks?: number
           question_text: string
           question_type: string
           teacher_id: string
@@ -214,6 +259,8 @@ export type Database = {
           difficulty?: string
           explanation?: string | null
           id?: string
+          marks?: number
+          negative_marks?: number
           question_text?: string
           question_type?: string
           teacher_id?: string
@@ -282,25 +329,42 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          description: string | null
           duration: number
           id: string
+          is_published: boolean
+          subject_id: string | null
           title: string
         }
         Insert: {
           created_at?: string
           created_by: string
+          description?: string | null
           duration: number
           id?: string
+          is_published?: boolean
+          subject_id?: string | null
           title: string
         }
         Update: {
           created_at?: string
           created_by?: string
+          description?: string | null
           duration?: number
           id?: string
+          is_published?: boolean
+          subject_id?: string | null
           title?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tests_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       topics: {
         Row: {
@@ -360,8 +424,8 @@ export type Database = {
       }
       has_role: {
         Args: {
-          _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
+          _role: Database["public"]["Enums"]["app_role"]
         }
         Returns: boolean
       }
