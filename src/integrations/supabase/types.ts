@@ -240,6 +240,7 @@ export type Database = {
           teacher_id: string
           topic_id: string
           updated_at: string
+          year: number | null
         }
         Insert: {
           created_at?: string
@@ -253,6 +254,7 @@ export type Database = {
           teacher_id: string
           topic_id: string
           updated_at?: string
+          year?: number | null
         }
         Update: {
           created_at?: string
@@ -266,6 +268,7 @@ export type Database = {
           teacher_id?: string
           topic_id?: string
           updated_at?: string
+          year?: number | null
         }
         Relationships: [
           {
